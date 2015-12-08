@@ -1,0 +1,26 @@
+{
+  "name": "freespeech-session",
+  "version": "1.0.3",
+  "description": "An abstraction library for network sessions -- a component of the Free Speech Project",
+  "main": "session.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IDWMaster/FreeSpeech-Session.git"
+  },
+  "keywords": [
+    "free",
+    "speech",
+    "session",
+    "networking",
+    "net"
+  ],
+  "author": "Brian Bosak <brielcccc@gmail.com> (https://github.com/IDWMaster)",
+  "license": "GPL-3.0",
+  "bugs": {
+    "url": "https://github.com/IDWMaster/FreeSpeech-Session/issues"
+  },
+  "homepage": "https://github.com/IDWMaster/FreeSpeech-Session#readme"
+}
