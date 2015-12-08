@@ -180,7 +180,7 @@ var CleartextServer = function (onReady, onClientConnect, customPort) {
             var session = Session();
             var send = session.send;
             var close = session.close;
-            
+            session.remoteEndpoint = rinfo;
             session.subclass(function (_protected) {
                 activeSessions[entry] = function (data) {
                     _protected.ntfyPacket(data);
