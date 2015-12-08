@@ -144,3 +144,7 @@ var Session = function () {
 };
 Session.CID = 0;
 Session.available = new Array();
+
+module.exports = {
+Session:Session
+};
