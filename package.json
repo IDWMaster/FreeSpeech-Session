@@ -22,5 +22,8 @@
   "bugs": {
     "url": "https://github.com/IDWMaster/FreeSpeech-Session/issues"
   },
-  "homepage": "https://github.com/IDWMaster/FreeSpeech-Session#readme"
+  "homepage": "https://github.com/IDWMaster/FreeSpeech-Session#readme",
+  "dependencies": {
+    "node-rsa": "^0.2.26"
+  }
 }
