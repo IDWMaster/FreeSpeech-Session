@@ -1,5 +1,5 @@
 var dgram = require('dgram');
-
+var Stream = require('stream');
 /**
  * @class
  */
@@ -134,6 +134,78 @@ var Session = function () {
                     retval.setSessionID = function(id) {
                         throw 'This function can only be called once.';
                     };
+                },
+                /**
+                 *  (*EXPERIMENTAL*) Converts this unreliable connection to reliable NodeJS streams.
+                 */
+                asStream:function() {
+                    var write = new Stream.Writable();
+                    //Retransmit time == estimated RTT (round-trip time) multiplied by 2.
+                    //For now, we'll default to 150 milliseconds
+                    var retransmitTime = 150;
+                    var retries = 0;
+                    var maxRetries = 3;
+                    var lastPacketID = 0;
+                    var packetID = 0; //Current frame ID, as 16-bit integer
+                    var cb;
+                    var read = new Stream.Readable();
+                    retval.registerReceiveCallback(function(data){
+                        switch(data[0]) {
+                            case 0:
+                                //Data packet
+                                if(data.readInt16LE(1) == packetID) {
+                                    var ACKFLACK = new Buffer(1+2);
+                                    ACKFLACK[0] = 1;
+                                    ACKFLACK.writeInt16LE(packetID);
+                                    retval.sendPacket(ACKFLACK);
+                                    lastPacketID = packetID;
+                                    packetID = (packetID+1) & (-1>>>16); //Increment by 1 -- 16-bit integer
+                                    read.push(data.slice(3));
+                                }else {
+                                    if(data.readInt16LE(1) == lastPacketID) {
+                                        //Retransmit ACKflack (please don't ask about THAT at work!)
+                                        var ACKFLACK = new Buffer(1+2);
+                                        ACKFLACK[0] = 1;
+                                        ACKFLACK.writeInt16LE(lastPacketID);
+                                        retval.sendPacket(ACKFLACK);
+                                    }
+                                }
+                                break;
+                            case 1:
+                                //ACK packet
+                                if(data.readInt16LE(1) == packetID) {
+                                    lastPacketID = packetID;
+                                    packetID = (packetID+1) & (-1 >>> 16);
+                                    if(cb) {
+                                        cb(true);
+                                    }
+                                }
+                                break;
+                        }
+                    });
+                    write._write = function(data,encoding,callback) {
+                        
+                       var packet = new Buffer(1+2+data.length);
+                       packet[0] = 0;
+                       packet.writeInt16LE(packetID,1);
+                        data.copy(packet,3);
+                        var transmitTimer = setInterval(function(){
+                            if(retries == maxRetries) {
+                                clearInterval(transmitTimer);
+                                callback(false);
+                            }
+                            retries++;
+                            retval.sendPacket(packet);
+                        },retransmitTime);
+                        cb = function() {
+                            clearInterval(transmitTimer);
+                            retries = 0;
+                            callback(true);
+                        }
+                       retval.sendPacket(packet);
+                       
+                    };
+                    return {read:read,write:write,close:function(){retval.close();}};
                 }
     };
     Protected.ntfyPacket = function (packet) {
