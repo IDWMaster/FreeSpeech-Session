@@ -193,7 +193,8 @@ var Session = function () {
                         var transmitTimer = setInterval(function(){
                             if(retries == maxRetries) {
                                 clearInterval(transmitTimer);
-                                callback(false);
+                                
+                                callback(new Error('Retransmit threshold exceeded.'));
                             }
                             retries++;
                             retval.sendPacket(packet);
@@ -201,7 +202,7 @@ var Session = function () {
                         cb = function() {
                             clearInterval(transmitTimer);
                             retries = 0;
-                            callback(true);
+                            callback();
                         }
                        retval.sendPacket(packet);
                        
