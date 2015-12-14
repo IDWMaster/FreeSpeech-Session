@@ -53,24 +53,24 @@ var Session = function () {
                 sendPacket:function(data) {
                     //TODO: Encode in general packet format
                     var packetOffset = 0;
-                    var mlen = Math.min(data.length-packetOffset,4096);
                         var i = 0;
                     while(data.length-packetOffset>0) {
                         
+                    var mlen = Math.min(data.length-packetOffset,4096); //Length of current datagram
                         var send = function(packet,i) {
                         var buffy = new Buffer(4+1+2+2+4+packet.length);
                             buffy.writeUInt32LE(currentPacketID,0);
                             buffy[4] = 2;
                             buffy.writeUInt16LE(sessionID,4+1);
                             buffy.writeUInt16LE(i,4+1+2);
-                            buffy.writeUInt32LE(packet.length,4+1+2+2);
+                            buffy.writeUInt32LE(data.length,4+1+2+2);
                             packet.copy(buffy,4+1+2+2+4);
                             retval.send(buffy);
                        
                     };
-                    var mb = new Buffer(mlen);
-                    data.copy(mb,0,0,mlen);
-                    send(mb,i);
+                    var mb = new Buffer(mlen); //Create datagram buffer
+                    data.copy(mb,0,packetOffset,packetOffset+mlen); //Copy data of max size into buffer
+                    send(mb,i); //Encode and transmit packet
                         packetOffset+=mlen;
                         i++;
                     }
@@ -102,7 +102,7 @@ var Session = function () {
                         if(cBuffer[packetID]) {
                             return;
                         }
-                        var dSegLen = Math.min(dlen-cBuffer.currentLength,data.length-(4+1+2+2));
+                        var dSegLen = Math.min(dlen-cBuffer.currentLength,4096); //Size of current received fragment
                         cBuffer.currentLength+=dSegLen;
                         cBuffer[packetID] = true;
                         data.copy(cBuffer.buffer,4096*packetID,4+1+2+2+4,4+1+2+2+4+dSegLen);
