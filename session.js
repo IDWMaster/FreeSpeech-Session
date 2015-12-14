@@ -149,6 +149,7 @@ var Session = function () {
                     var packetID = 0; //Current frame ID, as 16-bit integer
                     var cb;
                     var read = new Stream.Readable();
+                    read._read = function(bytes){};
                     retval.registerReceiveCallback(function(data){
                         switch(data[0]) {
                             case 0:
