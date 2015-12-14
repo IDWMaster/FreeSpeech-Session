@@ -157,7 +157,7 @@ var Session = function () {
                                 if(data.readInt16LE(1) == packetID) {
                                     var ACKFLACK = new Buffer(1+2);
                                     ACKFLACK[0] = 1;
-                                    ACKFLACK.writeInt16LE(packetID);
+                                    ACKFLACK.writeInt16LE(packetID,1);
                                     retval.sendPacket(ACKFLACK);
                                     lastPacketID = packetID;
                                     packetID = (packetID+1) & (-1>>>16); //Increment by 1 -- 16-bit integer
@@ -167,7 +167,7 @@ var Session = function () {
                                         //Retransmit ACKflack (please don't ask about THAT at work!)
                                         var ACKFLACK = new Buffer(1+2);
                                         ACKFLACK[0] = 1;
-                                        ACKFLACK.writeInt16LE(lastPacketID);
+                                        ACKFLACK.writeInt16LE(lastPacketID,1);
                                         retval.sendPacket(ACKFLACK);
                                     }
                                 }
