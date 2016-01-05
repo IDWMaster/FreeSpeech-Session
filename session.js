@@ -142,7 +142,10 @@ var Session = function () {
                     var write = new Stream.Writable();
                     //Retransmit time == estimated RTT (round-trip time) multiplied by 2.
                     //For now, we'll default to 150 milliseconds
-                    var retransmitTime = 300;
+                    var RTTSamples = 1;
+                    var RTTAvg = 300; //Average response time
+                    var tref = process.hrtime(); //Reference time since last call to _write
+                    var retransmitTime = RTTAvg*2;
                     var retries = 0;
                     var maxRetries = 3;
                     var lastPacketID = 0;
@@ -175,6 +178,15 @@ var Session = function () {
                             case 1:
                                 //ACK packet
                                 if(data.readInt16LE(1) == packetID) {
+                                    var tdiff = process.hrtime(tref);
+                                    //Scale tdiff to milliseconds
+                                    tdiff[1]/=1000000;
+                                    tdiff = (tdiff[0]*1000)*tdiff[1];
+                                    
+                                    //TODO: Compute RTT average
+                                    RTTSamples++;
+                                    RTTAvg = (RTTAvg+tdiff)/RTTSamples;
+                                    retransmitTime = RTTAvg*2;
                                     lastPacketID = packetID;
                                     packetID = (packetID+1) & (-1 >>> 16);
                                     if(cb) {
@@ -184,12 +196,15 @@ var Session = function () {
                                 break;
                         }
                     });
+                    var finished = true;
                     write._write = function(data,encoding,callback) {
-                        
+                        if(!finished){throw 'Unfinished business'};
+                        finished = false;
                        var packet = new Buffer(1+2+data.length);
                        packet[0] = 0;
                        packet.writeInt16LE(packetID,1);
                         data.copy(packet,3);
+                        tref = process.hrtime();
                         var transmitTimer = setInterval(function(){
                             if(retries == maxRetries) {
                                 clearInterval(transmitTimer);
@@ -200,6 +215,7 @@ var Session = function () {
                             retval.sendPacket(packet);
                         },retransmitTime);
                         cb = function() {
+                            finished = true;
                             clearInterval(transmitTimer);
                             retries = 0;
                             callback();
