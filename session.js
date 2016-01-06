@@ -19,7 +19,7 @@ var Session = function () {
     var reassemblyBuffer = new Object();
     
     var currentPacketID = 0;
-    
+    var defaultMTU = 4096;
     var Protected = {};
     var retval = {
         send: function (data) {},
@@ -142,6 +142,7 @@ var Session = function () {
                     var write = new Stream.Writable();
                     //Retransmit time == estimated RTT (round-trip time) multiplied by 2.
                     //For now, we'll default to 150 milliseconds
+                    var linkMTU = defaultMTU; //Current MTU for link
                     var RTTSamples = 1;
                     var RTTAvg = 300; //Average response time
                     var tref = process.hrtime(); //Reference time since last call to _write
@@ -180,13 +181,27 @@ var Session = function () {
                                 if(data.readInt16LE(1) == packetID) {
                                     var tdiff = process.hrtime(tref);
                                     //Scale tdiff to milliseconds
+                                    if(retries == 0) {
                                     tdiff[1]/=1000000;
                                     tdiff = (tdiff[0]*1000)*tdiff[1];
                                     
                                     //TODO: Compute RTT average
-                                    RTTSamples++;
-                                    RTTAvg = (RTTAvg+tdiff)/RTTSamples;
+                                    //RTTSamples++;
+                                    var rttprev = RTTAvg;
+                                    RTTAvg = (RTTAvg+tdiff)/2;
                                     retransmitTime = RTTAvg*2;
+                                    if(retransmitTime<20) {
+                                        retransmitTime = 20;
+                                    }
+                                    if(rttprev>RTTAvg) {
+                                       // linkMTU+=((rttprev-RTTAvg)/2) | 0;
+                                    }else {
+                                       // linkMTU-=((RTTAvg-rttprev)/2) | 0;
+                                        if(linkMTU<=0) {
+                                            linkMTU = defaultMTU;
+                                        }
+                                    }
+                                }
                                     lastPacketID = packetID;
                                     packetID = (packetID+1) & (-1 >>> 16);
                                     if(cb) {
@@ -198,6 +213,28 @@ var Session = function () {
                     });
                     var finished = true;
                     write._write = function(data,encoding,callback) {
+                        var pendingBuffers = new Array();
+                        for(var i = 0;i<data.length;i+=linkMTU) {
+                            var avail = Math.min(linkMTU,data.length-i);
+                            pendingBuffers.push(data.slice(i,i+avail));
+                        }
+                        var sendframe = function() {
+                            if(pendingBuffers.length == 0) {
+                                callback();
+                            }else {
+                                write.__write(pendingBuffers.splice(0,1)[0],null,function(err){
+                                    if(err) {
+                                        callback(err);
+                                    }else {
+                                        //Move onto next frame if done.
+                                        sendframe();
+                                    }
+                                });
+                            }
+                        };
+                        sendframe();
+                    };
+                    write.__write = function(data,encoding,callback) {
                         if(!finished){throw 'Unfinished business'};
                         finished = false;
                        var packet = new Buffer(1+2+data.length);
@@ -205,21 +242,25 @@ var Session = function () {
                        packet.writeInt16LE(packetID,1);
                         data.copy(packet,3);
                         tref = process.hrtime();
-                        var transmitTimer = setInterval(function(){
+                        var tfunc = function(){
+                            console.error('Dropped packet -- retransmit interval == '+retransmitTime);
                             if(retries == maxRetries) {
-                                clearInterval(transmitTimer);
+                                clearTimeout(transmitTimer);
                                 
-                                callback(new Error('Retransmit threshold exceeded.'));
+                                callback(new Error('Retransmit threshold exceeded with retransmit timeout = '+retransmitTime+', MTU = '+linkMTU));
                             }
                             retries++;
                             retval.sendPacket(packet);
-                        },retransmitTime);
+                            retransmitTime*=2;
+                            transmitTimer = setTimeout(tfunc,retransmitTime);
+                        };
+                        var transmitTimer = setTimeout(tfunc,retransmitTime);
                         cb = function() {
                             finished = true;
-                            clearInterval(transmitTimer);
+                            clearTimeout(transmitTimer);
                             retries = 0;
                             callback();
-                        }
+                        };
                        retval.sendPacket(packet);
                        
                     };

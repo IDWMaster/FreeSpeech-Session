@@ -1,6 +1,6 @@
 {
   "name": "freespeech-session",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "An abstraction library for network sessions -- a component of the Free Speech Project",
   "main": "session.js",
   "scripts": {
