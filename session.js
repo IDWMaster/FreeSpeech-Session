@@ -19,7 +19,7 @@ var Session = function () {
     var reassemblyBuffer = new Object();
     
     var currentPacketID = 0;
-    var defaultMTU = 4096;
+    var defaultMTU = 1024*5;
     var Protected = {};
     var retval = {
         send: function (data) {},
@@ -139,14 +139,20 @@ var Session = function () {
                  *  (*EXPERIMENTAL*) Converts this unreliable connection to reliable NodeJS streams.
                  */
                 asStream:function() {
+                    var getDiff = function(tref) {
+                        var tdiff = process.hrtime(tref);
+                            //Scale tdiff to milliseconds
+                            tdiff[1]/=1000000;
+                            tdiff = (tdiff[0]*1000)+tdiff[1];
+                            return tdiff;
+                    };
                     var write = new Stream.Writable();
                     //Retransmit time == estimated RTT (round-trip time) multiplied by 2.
                     //For now, we'll default to 150 milliseconds
                     var linkMTU = defaultMTU; //Current MTU for link
-                    var RTTSamples = 1;
-                    var RTTAvg = 300; //Average response time
+                    var bps = 1024; //Bytes per second
                     var tref = process.hrtime(); //Reference time since last call to _write
-                    var retransmitTime = RTTAvg*2;
+                    var retransmitTime = 200;
                     var retries = 0;
                     var maxRetries = 3;
                     var lastPacketID = 0;
@@ -179,29 +185,6 @@ var Session = function () {
                             case 1:
                                 //ACK packet
                                 if(data.readInt16LE(1) == packetID) {
-                                    var tdiff = process.hrtime(tref);
-                                    //Scale tdiff to milliseconds
-                                    if(retries == 0) {
-                                    tdiff[1]/=1000000;
-                                    tdiff = (tdiff[0]*1000)*tdiff[1];
-                                    
-                                    //TODO: Compute RTT average
-                                    //RTTSamples++;
-                                    var rttprev = RTTAvg;
-                                    RTTAvg = (RTTAvg+tdiff)/2;
-                                    retransmitTime = RTTAvg*2;
-                                    if(retransmitTime<20) {
-                                        retransmitTime = 20;
-                                    }
-                                    if(rttprev>RTTAvg) {
-                                       // linkMTU+=((rttprev-RTTAvg)/2) | 0;
-                                    }else {
-                                       // linkMTU-=((RTTAvg-rttprev)/2) | 0;
-                                        if(linkMTU<=0) {
-                                            linkMTU = defaultMTU;
-                                        }
-                                    }
-                                }
                                     lastPacketID = packetID;
                                     packetID = (packetID+1) & (-1 >>> 16);
                                     if(cb) {
@@ -213,16 +196,23 @@ var Session = function () {
                     });
                     var finished = true;
                     write._write = function(data,encoding,callback) {
-                        var pendingBuffers = new Array();
-                        for(var i = 0;i<data.length;i+=linkMTU) {
-                            var avail = Math.min(linkMTU,data.length-i);
-                            pendingBuffers.push(data.slice(i,i+avail));
-                        }
+                        var dpos = 0;
                         var sendframe = function() {
-                            if(pendingBuffers.length == 0) {
+                            if(dpos >= data.length) {
                                 callback();
                             }else {
-                                write.__write(pendingBuffers.splice(0,1)[0],null,function(err){
+                                //TODO: Set current LinkMTU based on bitrate and time since last transmission, assuming MTU unchanged
+                                var tdiff = getDiff(tref); //Time elapsed since last transmission
+                                //Compute available bandwidth
+                                //We know we can send bps bytes per second, and it's been tdiff since last transmission
+                                var bandwidth = (bps*tdiff*1000) | 0; //Available transmission bandwidth per interval
+                                if(bandwidth != 0) {
+                                    linkMTU = bandwidth*2; //Send data as fast as possible
+                                }
+                                console.error('Link MTU == '+linkMTU+', MBPS = '+bps/1024/1024+', TDIFF = '+tdiff);
+                                
+                                var avail = Math.min(linkMTU,data.length-dpos);
+                                write.__write(data.slice(dpos,avail+dpos),null,function(err){
                                     if(err) {
                                         callback(err);
                                     }else {
@@ -230,12 +220,14 @@ var Session = function () {
                                         sendframe();
                                     }
                                 });
+                                dpos+=avail;
                             }
                         };
                         sendframe();
                     };
                     write.__write = function(data,encoding,callback) {
                         if(!finished){throw 'Unfinished business'};
+                        
                         finished = false;
                        var packet = new Buffer(1+2+data.length);
                        packet[0] = 0;
@@ -243,23 +235,35 @@ var Session = function () {
                         data.copy(packet,3);
                         tref = process.hrtime();
                         var tfunc = function(){
-                            console.error('Dropped packet -- retransmit interval == '+retransmitTime);
-                            if(retries == maxRetries) {
+                            console.error('Retransmit, MBPS == '+bps/1024/1024);
+                            /*if(retries == maxRetries) {
                                 clearTimeout(transmitTimer);
                                 
                                 callback(new Error('Retransmit threshold exceeded with retransmit timeout = '+retransmitTime+', MTU = '+linkMTU));
-                            }
+                            }*/
                             retries++;
                             retval.sendPacket(packet);
-                            retransmitTime*=2;
+                            //retransmitTime*=2;
                             transmitTimer = setTimeout(tfunc,retransmitTime);
                         };
+                        //TODO: To fix this -- approach the problem differently
+                        //Measure how many bytes/second we can transmit reliably
+                        //and enqueue packets to be sent that many per second intervals, rather
+                        //than complex window resizing and all that other goofy stuff.
+                        
                         var transmitTimer = setTimeout(tfunc,retransmitTime);
                         cb = function() {
                             finished = true;
                             clearTimeout(transmitTimer);
                             retries = 0;
+                            
+                            var tdiff = getDiff(tref);
+                            var bytes = packet.length;
+                            bps = (bytes/tdiff)*1000; //Bytes per second
+                            
+                            cb = undefined;
                             callback();
+                         
                         };
                        retval.sendPacket(packet);
                        
