@@ -77,6 +77,12 @@ var Session = function () {
                     
                         currentPacketID++;
                 },
+                setPacketId:function(id) {
+                    currentPacketID = id;
+                },
+                getPacketId:function() {
+                    return currentPacketID;
+                },
                 /**
                  * Decodes a packet
                  * @param {Buffer} data
@@ -151,10 +157,12 @@ var Session = function () {
                     //For now, we'll default to 150 milliseconds
                     var linkMTU = defaultMTU; //Current MTU for link
                     var bps = 1024; //Bytes per second
+                    var rttavg = 100;
                     var tref = process.hrtime(); //Reference time since last call to _write
                     var retransmitTime = 200;
                     var retries = 0;
-                    var maxRetries = 3;
+                    var timespent = 0;
+                    var maxTime = 10000; //Max time to wait for response
                     var lastPacketID = 0;
                     var packetID = 0; //Current frame ID, as 16-bit integer
                     var cb;
@@ -209,7 +217,6 @@ var Session = function () {
                                 if(bandwidth != 0) {
                                     linkMTU = bandwidth*2; //Send data as fast as possible
                                 }
-                                console.error('Link MTU == '+linkMTU+', MBPS = '+bps/1024/1024+', TDIFF = '+tdiff);
                                 
                                 var avail = Math.min(linkMTU,data.length-dpos);
                                 write.__write(data.slice(dpos,avail+dpos),null,function(err){
@@ -227,7 +234,7 @@ var Session = function () {
                     };
                     write.__write = function(data,encoding,callback) {
                         if(!finished){throw 'Unfinished business'};
-                        
+                        var pid = retval.getPacketId();
                         finished = false;
                        var packet = new Buffer(1+2+data.length);
                        packet[0] = 0;
@@ -235,15 +242,17 @@ var Session = function () {
                         data.copy(packet,3);
                         tref = process.hrtime();
                         var tfunc = function(){
-                            console.error('Retransmit, MBPS == '+bps/1024/1024);
-                            /*if(retries == maxRetries) {
+                            timespent = getDiff(tref);
+                            if(timespent>=maxTime) {
                                 clearTimeout(transmitTimer);
                                 
                                 callback(new Error('Retransmit threshold exceeded with retransmit timeout = '+retransmitTime+', MTU = '+linkMTU));
-                            }*/
+                            }
                             retries++;
+                            retval.setPacketId(pid);
                             retval.sendPacket(packet);
-                            //retransmitTime*=2;
+                            retval.setPacketId(pid+1);
+                            retransmitTime*=2;
                             transmitTimer = setTimeout(tfunc,retransmitTime);
                         };
                         //TODO: To fix this -- approach the problem differently
@@ -259,6 +268,8 @@ var Session = function () {
                             
                             var tdiff = getDiff(tref);
                             var bytes = packet.length;
+                            rttavg = (rttavg+tdiff)/2;
+                            retransmitTime = rttavg*4;
                             bps = (bytes/tdiff)*1000; //Bytes per second
                             
                             cb = undefined;
