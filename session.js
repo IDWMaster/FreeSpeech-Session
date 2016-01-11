@@ -56,7 +56,7 @@ var Session = function () {
                         var i = 0;
                     while(data.length-packetOffset>0) {
                         
-                    var mlen = Math.min(data.length-packetOffset,2048); //Length of current datagram
+                    var mlen = Math.min(data.length-packetOffset,1024); //Length of current datagram
                         var send = function(packet,i) {
                         var buffy = new Buffer(4+1+2+2+4+packet.length);
                             buffy.writeUInt32LE(currentPacketID,0);
@@ -99,7 +99,7 @@ var Session = function () {
                         }
                         var dlen = data.readUInt32LE(4+1+2+2);
                         if(!reassemblyBuffer[messageID]) {
-                            var mray = new Array(Math.ceil(dlen/2048));
+                            var mray = new Array(Math.ceil(dlen/1024));
                             mray.buffer = new Buffer(dlen);
                             mray.currentLength = 0;
                             reassemblyBuffer[messageID] = mray;
@@ -108,10 +108,10 @@ var Session = function () {
                         if(cBuffer[packetID]) {
                             return;
                         }
-                        var dSegLen = Math.min(dlen-cBuffer.currentLength,2048); //Size of current received fragment
+                        var dSegLen = Math.min(dlen-cBuffer.currentLength,1024); //Size of current received fragment
                         cBuffer.currentLength+=dSegLen;
                         cBuffer[packetID] = true;
-                        data.copy(cBuffer.buffer,2048*packetID,4+1+2+2+4,4+1+2+2+4+dSegLen);
+                        data.copy(cBuffer.buffer,1024*packetID,4+1+2+2+4,4+1+2+2+4+dSegLen);
                         if(cBuffer.currentLength >= dlen) {
                             //We have a packet!
                             reassemblyBuffer[messageID] = null;
@@ -275,7 +275,7 @@ var Session = function () {
                             rttavg = (rttavg+tdiff)/2;
                             retransmitTime = rttavg*4;
                             bps = (bytes/tdiff)*1000; //Bytes per second
-                            linkMTU++;
+                            linkMTU*=1.5;
                             cb = undefined;
                             callback();                
                         };
