@@ -42,6 +42,7 @@ var Session = function () {
             callback(Protected);
             return this;
         },
+        mtu:1024,
                 close: function () {
                     Session.available.push(sessionID);
                 },
@@ -56,7 +57,7 @@ var Session = function () {
                         var i = 0;
                     while(data.length-packetOffset>0) {
                         
-                    var mlen = Math.min(data.length-packetOffset,1024); //Length of current datagram
+                    var mlen = Math.min(data.length-packetOffset,this.mtu); //Length of current datagram
                         var send = function(packet,i) {
                         var buffy = new Buffer(4+1+2+2+4+packet.length);
                             buffy.writeUInt32LE(currentPacketID,0);
@@ -99,7 +100,7 @@ var Session = function () {
                         }
                         var dlen = data.readUInt32LE(4+1+2+2);
                         if(!reassemblyBuffer[messageID]) {
-                            var mray = new Array(Math.ceil(dlen/1024));
+                            var mray = new Array(Math.ceil(dlen/this.mtu));
                             mray.buffer = new Buffer(dlen);
                             mray.currentLength = 0;
                             reassemblyBuffer[messageID] = mray;
@@ -108,10 +109,10 @@ var Session = function () {
                         if(cBuffer[packetID]) {
                             return;
                         }
-                        var dSegLen = Math.min(dlen-cBuffer.currentLength,1024); //Size of current received fragment
+                        var dSegLen = Math.min(dlen-cBuffer.currentLength,this.mtu); //Size of current received fragment
                         cBuffer.currentLength+=dSegLen;
                         cBuffer[packetID] = true;
-                        data.copy(cBuffer.buffer,1024*packetID,4+1+2+2+4,4+1+2+2+4+dSegLen);
+                        data.copy(cBuffer.buffer,this.mtu*packetID,4+1+2+2+4,4+1+2+2+4+dSegLen);
                         if(cBuffer.currentLength >= dlen) {
                             //We have a packet!
                             reassemblyBuffer[messageID] = null;
@@ -215,7 +216,7 @@ var Session = function () {
                                 //We know we can send bps bytes per second, and it's been tdiff since last transmission
                                 var bandwidth = (bps*tdiff*1000) | 0; //Available transmission bandwidth per interval
                                 if(bandwidth != 0) {
-                                   // linkMTU = bandwidth*2; //Send data as fast as possible
+                                 linkMTU = bandwidth*2; //Send data as fast as possible
                                 }
                                 
                                 var avail = Math.min(linkMTU,data.length-dpos);
@@ -242,10 +243,10 @@ var Session = function () {
                         data.copy(packet,3);
                         tref = process.hrtime();
                         var tfunc = function(){
-                            linkMTU = linkMTU/2 | 0;
+                            /*linkMTU = linkMTU/2 | 0;
                             if(linkMTU == 0) {
                                 linkMTU = 1024;
-                            }
+                            }*/
                             timespent = getDiff(tref);
                             if(timespent>=maxTime) {
                                 clearTimeout(transmitTimer);
@@ -275,7 +276,7 @@ var Session = function () {
                             rttavg = (rttavg+tdiff)/2;
                             retransmitTime = rttavg*4;
                             bps = (bytes/tdiff)*1000; //Bytes per second
-                            linkMTU*=1.5;
+                            //linkMTU*=1.5;
                             cb = undefined;
                             callback();                
                         };
