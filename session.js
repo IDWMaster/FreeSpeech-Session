@@ -215,7 +215,7 @@ var Session = function () {
                                 //We know we can send bps bytes per second, and it's been tdiff since last transmission
                                 var bandwidth = (bps*tdiff*1000) | 0; //Available transmission bandwidth per interval
                                 if(bandwidth != 0) {
-                                    linkMTU = bandwidth*2; //Send data as fast as possible
+                                   // linkMTU = bandwidth*2; //Send data as fast as possible
                                 }
                                 
                                 var avail = Math.min(linkMTU,data.length-dpos);
@@ -242,11 +242,15 @@ var Session = function () {
                         data.copy(packet,3);
                         tref = process.hrtime();
                         var tfunc = function(){
+                            linkMTU = linkMTU/2 | 0;
+                            if(linkMTU == 0) {
+                                linkMTU = 1024;
+                            }
                             timespent = getDiff(tref);
                             if(timespent>=maxTime) {
                                 clearTimeout(transmitTimer);
                                 
-                                callback(new Error('Retransmit threshold exceeded with retransmit timeout = '+retransmitTime+', MTU = '+linkMTU));
+                                callback(new Error('Retransmit threshold exceeded with retransmit timeout = '+retransmitTime+', MTU = '+linkMTU+', BPS = '+bps));
                             }
                             retries++;
                             retval.setPacketId(pid);
@@ -271,10 +275,9 @@ var Session = function () {
                             rttavg = (rttavg+tdiff)/2;
                             retransmitTime = rttavg*4;
                             bps = (bytes/tdiff)*1000; //Bytes per second
-                            
+                            linkMTU++;
                             cb = undefined;
-                            callback();
-                         
+                            callback();                
                         };
                        retval.sendPacket(packet);
                        
