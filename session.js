@@ -1,8 +1,5 @@
 var dgram = require('dgram');
 var Stream = require('stream');
-/**
- * @class
- */
 var Session = function () {
     var sessionID;
     if(Session.available.length>0) {
@@ -33,7 +30,7 @@ var Session = function () {
          * Unregisters a callback
          */
         unregisterReceiveCallback: function (id) {
-            callbacks.splice(id, 1);
+            callbacks[id] = undefined;
         },
         /**
          * Subclasses this instance
@@ -143,6 +140,42 @@ var Session = function () {
                     };
                 },
                 /**
+                 * EXPERIMENTAL -- Makes a large packet session; which can be used to send data larger than the link MTU.
+                 * @param {Number} linkMTU The MTU for this link (must be at least 32 bytes). The resultant Session object will split all packets according to this MTU; so choose wisely.
+                 * @returns {Session.retval.mkLargePacketSession.s|nm$_session.Session.retval}
+                 */
+                mkLargePacketSession:function(linkMTU) {
+                    var s = Session();
+                    var codec = Session(); //Coder/decoder, not to be confused with proprietary multimedia codecs.
+                    var codec_old_send = codec.send;
+                    codec.send = function(data){
+                        codec_old_send(data);
+                        retval.send(data);
+                    };
+                    codec.mtu = linkMTU;
+                    s.subclass(function(protected){
+                        var oldclose = s.close();
+                        
+                        retval.registerReceiveCallback(function(packet){
+                            codec.decodePacket(packet);
+                        });
+                        codec.registerReceiveCallback(function(packet){
+                            protected.ntfyPacket(packet);
+                        });
+                        var oldsend = s.send;
+                        s.send = function(data) {
+                            oldsend(data);
+                            codec.sendPacket(data);
+                        };
+                        s.close = function() {
+                            oldclose();
+                            retval.close();
+                            codec.close();
+                        };
+                    });
+                    return s;
+                },
+                /**
                  *  (*EXPERIMENTAL*) Converts this unreliable connection to reliable NodeJS streams.
                  */
                 asStream:function() {
@@ -165,7 +198,7 @@ var Session = function () {
                     var timespent = 0;
                     var maxTime = 10000; //Max time to wait for response
                     var lastPacketID = 0;
-                    var packetID = 0; //Current frame ID, as 16-bit integer
+                    var packetID = 0; //RX frame ID
                     var cb;
                     var read = new Stream.Readable();
                     read._read = function(bytes){};
@@ -278,7 +311,7 @@ var Session = function () {
                             bps = (bytes/tdiff)*1000; //Bytes per second
                             //linkMTU*=1.5;
                             cb = undefined;
-                            callback();                
+                            callback();
                         };
                        retval.sendPacket(packet);
                        
@@ -288,7 +321,9 @@ var Session = function () {
     };
     Protected.ntfyPacket = function (packet) {
         for (var i = 0; i < callbacks.length; i++) {
-            callbacks[i](packet);
+            if(callbacks[i]) {
+                callbacks[i](packet);
+            }
         }
     };
     return retval;
@@ -376,7 +411,9 @@ var CleartextServer = function (onReady, onClientConnect, customPort) {
 };
 
 
+
 module.exports = {
 Session:Session,
-CleartextServer:CleartextServer
+CleartextServer:CleartextServer,
+mkLargePacketSocket:mkLargePacketSocket
 };
