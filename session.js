@@ -414,6 +414,5 @@ var CleartextServer = function (onReady, onClientConnect, customPort) {
 
 module.exports = {
 Session:Session,
-CleartextServer:CleartextServer,
-mkLargePacketSocket:mkLargePacketSocket
+CleartextServer:CleartextServer
 };
