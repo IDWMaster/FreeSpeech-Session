@@ -379,7 +379,7 @@ var CleartextServer = function (onReady, onClientConnect, customPort) {
                     delete activeSessions[entry];
                 };
             });
-            onClientConnect(session);
+            onClientConnect(session.mkLargePacketSession(32));
         }
         activeSessions[entry](msg);
     });
@@ -405,7 +405,7 @@ var CleartextServer = function (onReady, onClientConnect, customPort) {
                     delete activeSessions[entry];
                 };
             });
-            return retval;
+            return retval.mkLargePacketSession(32);
         }
     };
 };
