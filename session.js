@@ -17,6 +17,7 @@ var Session = function () {
     
     var currentPacketID = 0;
     var defaultMTU = 1024*5;
+    var mtu = 1024;
     var Protected = {};
     var retval = {
         send: function (data) {},
@@ -39,7 +40,21 @@ var Session = function () {
             callback(Protected);
             return this;
         },
-        mtu:1024,
+        /**
+         * Sets the MTU of this link
+         * @param {Number} value The MTU
+         * @returns {undefined}
+         */
+        setMTU:function(value){
+            mtu = value;
+        },
+        /**
+         * Gets the current MTU for this link
+         * @returns {Number|Session.mtu|value}
+         */
+        getMTU:function(){
+            return mtu;
+        },
                 close: function () {
                     Session.available.push(sessionID);
                 },
@@ -54,7 +69,7 @@ var Session = function () {
                         var i = 0;
                     while(data.length-packetOffset>0) {
                         
-                    var mlen = Math.min(data.length-packetOffset,this.mtu); //Length of current datagram
+                    var mlen = Math.min(data.length-packetOffset,mtu); //Length of current datagram
                         var send = function(packet,i) {
                         var buffy = new Buffer(4+1+2+2+4+packet.length);
                             buffy.writeUInt32LE(currentPacketID,0);
@@ -97,7 +112,7 @@ var Session = function () {
                         }
                         var dlen = data.readUInt32LE(4+1+2+2);
                         if(!reassemblyBuffer[messageID]) {
-                            var mray = new Array(Math.ceil(dlen/this.mtu));
+                            var mray = new Array(Math.ceil(dlen/mtu));
                             mray.buffer = new Buffer(dlen);
                             mray.currentLength = 0;
                             reassemblyBuffer[messageID] = mray;
@@ -106,10 +121,10 @@ var Session = function () {
                         if(cBuffer[packetID]) {
                             return;
                         }
-                        var dSegLen = Math.min(dlen-cBuffer.currentLength,this.mtu); //Size of current received fragment
+                        var dSegLen = Math.min(dlen-cBuffer.currentLength,mtu); //Size of current received fragment
                         cBuffer.currentLength+=dSegLen;
                         cBuffer[packetID] = true;
-                        data.copy(cBuffer.buffer,this.mtu*packetID,4+1+2+2+4,4+1+2+2+4+dSegLen);
+                        data.copy(cBuffer.buffer,mtu*packetID,4+1+2+2+4,4+1+2+2+4+dSegLen);
                         if(cBuffer.currentLength >= dlen) {
                             //We have a packet!
                             reassemblyBuffer[messageID] = null;
@@ -152,12 +167,16 @@ var Session = function () {
                         codec_old_send(data);
                         retval.send(data);
                     };
-                    codec.mtu = linkMTU;
+                    codec.setMTU(linkMTU);
                     s.subclass(function(protected){
                         var oldclose = s.close();
                         
-                        retval.registerReceiveCallback(function(packet){
+                        var recvCb = function(packet) {
                             codec.decodePacket(packet);
+                        };
+                        
+                        retval.registerReceiveCallback(function(packet){
+                            recvCb();
                         });
                         codec.registerReceiveCallback(function(packet){
                             protected.ntfyPacket(packet);
@@ -171,6 +190,76 @@ var Session = function () {
                             oldclose();
                             retval.close();
                             codec.close();
+                        };
+                        /**
+                         * Suepends all network traffic on this link, and computes the MTU.
+                         * @param {Number} timeout How long to wait for the computer to respond (in milliseconds)
+                         * @param {Function} callback The callback function to be invoked upon completion.
+                         * @returns {nm$_session.Session.retval.mkLargePacketSession.s.computeMTU}
+                         */
+                        s.computeMTU = function(timeout,callback) {
+                            //Compute MTU for retval
+                            var oldcb = recvCb;
+                            var currentMTU = 0; //TX MTU
+                            var rtt = timeout*2;
+                            var maxMTU = 0; //RX MTU
+                            var tref = process.hrtime();
+                            var getDiff = function(tref) {
+                                var tdiff = process.hrtime(tref);
+                                //Scale tdiff to milliseconds
+                                tdiff[1]/=1000000;
+                                tdiff = (tdiff[0]*1000)+tdiff[1];
+                                return tdiff;
+                            };
+                            
+                            
+                            
+                            var factor = 100;
+                            var timeout;
+                            var computeMTU = function() {
+                                timeout = setTimeout(function(){
+                                    callback();
+                                    recvCb = oldcb;
+                                 },rtt*2);
+                                tref = process.hrtime();
+                                //Start and 32 bytes and keep going bigger
+                                var txsize = currentMTU == 0 ? 32 : currentMTU;
+                                var packet = new Buffer(txsize*2);
+                                packet.fill(0);
+                                retval.send(packet);
+                                
+                            };
+                            var cb = function() {
+                                clearTimeout(timeout);
+                            };
+                            recvCb = function(packet){
+                                if(packet.length>maxMTU) 
+                                {
+                                    maxMTU = packet.length;
+                                }
+                                switch(packet[0]) {
+                                    case 0: //Packet request
+                                        packet = new Buffer(1+4);
+                                        packet[0] = 1;
+                                        packet.writeUInt32LE(maxMTU,1);
+                                        break;
+                                    case 1:
+                                        //Received response for given packet size
+                                        var rmtu = packet.readUInt32LE(1);
+                                        if(rmtu>currentMTU) {
+                                            currentMTU = rmtu;
+                                            cb();
+                                            rtt = getDiff(tref);
+                                        }
+                                        break;
+                                }
+                                
+                            };
+                            
+                            computeMTU();
+                            
+                            
+                            
                         };
                     });
                     return s;
