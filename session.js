@@ -176,7 +176,7 @@ var Session = function () {
                         };
                         
                         retval.registerReceiveCallback(function(packet){
-                            recvCb();
+                            recvCb(packet);
                         });
                         codec.registerReceiveCallback(function(packet){
                             protected.ntfyPacket(packet);
