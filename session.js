@@ -112,19 +112,21 @@ var Session = function () {
                         }
                         var dlen = data.readUInt32LE(4+1+2+2);
                         if(!reassemblyBuffer[messageID]) {
-                            var mray = new Array(Math.ceil(dlen/mtu));
+                            var computedMTU = data.length-(4+1+2+2+4);
+                            var mray = new Array(Math.ceil(dlen/computedMTU));
                             mray.buffer = new Buffer(dlen);
                             mray.currentLength = 0;
+                            mray.mtu = computedMTU;
                             reassemblyBuffer[messageID] = mray;
                         }
                         var cBuffer = reassemblyBuffer[messageID];
                         if(cBuffer[packetID]) {
                             return;
                         }
-                        var dSegLen = Math.min(dlen-cBuffer.currentLength,mtu); //Size of current received fragment
+                        var dSegLen = Math.min(dlen-cBuffer.currentLength,cBuffer.mtu); //Size of current received fragment
                         cBuffer.currentLength+=dSegLen;
                         cBuffer[packetID] = true;
-                        data.copy(cBuffer.buffer,mtu*packetID,4+1+2+2+4,4+1+2+2+4+dSegLen);
+                        data.copy(cBuffer.buffer,cBuffer.mtu*packetID,4+1+2+2+4,4+1+2+2+4+dSegLen);
                         if(cBuffer.currentLength >= dlen) {
                             //We have a packet!
                             reassemblyBuffer[messageID] = null;
@@ -195,6 +197,15 @@ var Session = function () {
                  *  (*EXPERIMENTAL*) Converts this unreliable connection to reliable NodeJS streams.
                  */
                 asStream:function() {
+                    
+                    //TODO: Physical layer MTU calculation
+                    //as continuous function
+                    
+                    var foundMTU = false; //Whether or not we have found maximum MTU for this link
+                    var physMTUAdjusted = false; //Whether or not the MTU has been adjusted up recently
+                    
+                    
+                    
                     var getDiff = function(tref) {
                         var tdiff = process.hrtime(tref);
                             //Scale tdiff to milliseconds
@@ -269,11 +280,18 @@ var Session = function () {
                                 }
                                 
                                 var avail = Math.min(linkMTU,data.length-dpos);
+                                if(!foundMTU) {
+                                    retval.setMTU(retval.getMTU()*2);
+                                    physMTUAdjusted = true;
+                                }
+                                
+                                
                                 write.__write(data.slice(dpos,avail+dpos),null,function(err){
                                     if(err) {
                                         callback(err);
                                     }else {
                                         //Move onto next frame if done.
+                                        physMTUAdjusted = false;
                                         sendframe();
                                     }
                                 });
@@ -292,10 +310,13 @@ var Session = function () {
                         data.copy(packet,3);
                         tref = process.hrtime();
                         var tfunc = function(){
-                            /*linkMTU = linkMTU/2 | 0;
-                            if(linkMTU == 0) {
-                                linkMTU = 1024;
-                            }*/
+                            if(physMTUAdjusted) {
+                                retval.setMTU(retval.getMTU()/2);
+                                physMTUAdjusted = false;
+                                foundMTU = true;
+                               // console.error('Found max MTU at '+retval.getMTU());
+                            }
+                            
                             timespent = getDiff(tref);
                             if(timespent>=maxTime) {
                                 clearTimeout(transmitTimer);
