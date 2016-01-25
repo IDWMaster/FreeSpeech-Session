@@ -71,13 +71,14 @@ var Session = function () {
                         
                     var mlen = Math.min(data.length-packetOffset,mtu); //Length of current datagram
                         var send = function(packet,i) {
-                        var buffy = new Buffer(4+1+2+2+4+packet.length);
+                        var buffy = new Buffer(4+1+2+2+4+2+packet.length);
                             buffy.writeUInt32LE(currentPacketID,0);
                             buffy[4] = 2;
                             buffy.writeUInt16LE(sessionID,4+1);
                             buffy.writeUInt16LE(i,4+1+2);
                             buffy.writeUInt32LE(data.length,4+1+2+2);
-                            packet.copy(buffy,4+1+2+2+4);
+                            buffy.writeUInt16LE(mtu,4+1+2+2+4);
+                            packet.copy(buffy,4+1+2+2+4+2);
                             retval.send(buffy);
                        
                     };
@@ -111,8 +112,11 @@ var Session = function () {
                             return;
                         }
                         var dlen = data.readUInt32LE(4+1+2+2);
+                        var computedMTU = data.readUInt16LE(4+1+2+2+4);
                         if(!reassemblyBuffer[messageID]) {
-                            var computedMTU = data.length-(4+1+2+2+4);
+                           // console.error('Reassembly MTU == '+computedMTU+' segment size is '+dlen);
+                           
+                           //console.error('MTU == '+computedMTU);
                             var mray = new Array(Math.ceil(dlen/computedMTU));
                             mray.buffer = new Buffer(dlen);
                             mray.currentLength = 0;
@@ -120,13 +124,14 @@ var Session = function () {
                             reassemblyBuffer[messageID] = mray;
                         }
                         var cBuffer = reassemblyBuffer[messageID];
+                        
                         if(cBuffer[packetID]) {
                             return;
                         }
                         var dSegLen = Math.min(dlen-cBuffer.currentLength,cBuffer.mtu); //Size of current received fragment
                         cBuffer.currentLength+=dSegLen;
                         cBuffer[packetID] = true;
-                        data.copy(cBuffer.buffer,cBuffer.mtu*packetID,4+1+2+2+4,4+1+2+2+4+dSegLen);
+                        data.copy(cBuffer.buffer,cBuffer.mtu*packetID,4+1+2+2+4+2,4+1+2+2+4+2+dSegLen);
                         if(cBuffer.currentLength >= dlen) {
                             //We have a packet!
                             reassemblyBuffer[messageID] = null;
