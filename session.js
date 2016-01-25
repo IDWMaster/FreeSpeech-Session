@@ -285,7 +285,7 @@ var Session = function () {
                                 }
                                 
                                 var avail = Math.min(linkMTU,data.length-dpos);
-                                if(!foundMTU) {
+                                if(!foundMTU && avail>retval.getMTU()) {
                                     retval.setMTU(retval.getMTU()*2);
                                     physMTUAdjusted = true;
                                 }
@@ -315,12 +315,12 @@ var Session = function () {
                         data.copy(packet,3);
                         tref = process.hrtime();
                         var tfunc = function(){
-                            if(physMTUAdjusted) {
+                            if(physMTUAdjusted && retries > 2) {
                                 retval.setMTU(retval.getMTU()/2);
                                 physMTUAdjusted = false;
                                 foundMTU = true;
                                 pid++; //Physical MTU adjustment requires retransmission of whole frame :(
-                               // console.error('Found max MTU at '+retval.getMTU());
+                               
                             }
                             
                             timespent = getDiff(tref);
