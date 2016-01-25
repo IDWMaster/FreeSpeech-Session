@@ -319,6 +319,7 @@ var Session = function () {
                                 retval.setMTU(retval.getMTU()/2);
                                 physMTUAdjusted = false;
                                 foundMTU = true;
+                                pid++; //Physical MTU adjustment requires retransmission of whole frame :(
                                // console.error('Found max MTU at '+retval.getMTU());
                             }
                             
