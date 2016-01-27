@@ -121,10 +121,15 @@ var Session = function () {
                             mray.buffer = new Buffer(dlen);
                             mray.currentLength = 0;
                             mray.mtu = computedMTU;
+                            mray.totalLength = dlen;
                             reassemblyBuffer[messageID] = mray;
                         }
                         var cBuffer = reassemblyBuffer[messageID];
-                        
+                        if(cBuffer.totalLength != dlen) {
+                            //Discard packet
+                            reassemblyBuffer[messageID] = null;
+                            return;
+                        }
                         if(cBuffer[packetID]) {
                             return;
                         }
@@ -321,7 +326,7 @@ var Session = function () {
                                 retval.setMTU(retval.getMTU()/2);
                                 physMTUAdjusted = false;
                                 foundMTU = true;
-                                pid++; //Physical MTU adjustment requires retransmission of whole frame :(
+                                pid+=5; //Physical MTU adjustment requires retransmission of whole frame :(
                                
                             }
                             
