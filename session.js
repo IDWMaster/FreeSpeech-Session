@@ -339,7 +339,7 @@ var Session = function () {
                             if(timespent>=maxTime) {
                                 clearTimeout(transmitTimer);
                                 
-                                callback(new Error('Retransmit threshold exceeded with retransmit timeout = '+retransmitTime+', MTU = '+linkMTU+', BPS = '+bps+', retries='+retries));
+                                callback(new Error('Retransmit threshold exceeded with retransmit timeout = '+retransmitTime+', MTU = '+linkMTU+', BPS = '+bps+', retries='+retries+', RTT='+rttavg));
                             }
                             retries++;
                             retval.setPacketId(pid);
@@ -362,7 +362,7 @@ var Session = function () {
                             var tdiff = getDiff(tref);
                             var bytes = packet.length;
                             rttavg = (rttavg+tdiff)/2;
-                            retransmitTime = rttavg*4;
+                            retransmitTime = rttavg*2;
                             bps = (bytes/tdiff)*1000; //Bytes per second
                             //linkMTU*=1.5;
                             cb = undefined;
