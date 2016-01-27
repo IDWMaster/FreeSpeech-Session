@@ -225,6 +225,7 @@ var Session = function () {
                     var bps = 1024; //Bytes per second
                     var rttavg = 100;
                     var tref = process.hrtime(); //Reference time since last call to _write
+                    var transmitref = process.hrtime(); //Reference time of last physical link transmission
                     var retransmitTime = 200;
                     var retries = 0;
                     var timespent = 0;
@@ -276,12 +277,12 @@ var Session = function () {
                                 callback();
                             }else {
                                 //TODO: Set current LinkMTU based on bitrate and time since last transmission, assuming MTU unchanged
-                                var tdiff = getDiff(tref); //Time elapsed since last transmission
+                                var tdiff = getDiff(transmitref); //Time elapsed since we last sent data over the link
                                 //Compute available bandwidth
                                 //We know we can send bps bytes per second, and it's been tdiff since last transmission
-                                var bandwidth = (bps*tdiff*1000) | 0; //Available transmission bandwidth per interval
+                                var bandwidth = bps;//(bps*tdiff*1000) | 0; //Available transmission bandwidth per interval
                                 if(bandwidth != 0) {
-                                 linkMTU = bandwidth*2; //Send data as fast as possible
+                                 linkMTU = bandwidth; //Send data as fast as possible
                                 }
                                 
                                 var avail = Math.min(linkMTU,data.length-dpos);
@@ -315,6 +316,7 @@ var Session = function () {
                         data.copy(packet,3);
                         tref = process.hrtime();
                         var tfunc = function(){
+                            transmitref = process.hrtime();
                             if(physMTUAdjusted && retries > 2) {
                                 retval.setMTU(retval.getMTU()/2);
                                 physMTUAdjusted = false;
@@ -356,6 +358,8 @@ var Session = function () {
                             cb = undefined;
                             callback();
                         };
+                        
+                            transmitref = process.hrtime();
                        retval.sendPacket(packet);
                        
                     };
