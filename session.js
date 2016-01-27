@@ -134,8 +134,13 @@ var Session = function () {
                             return;
                         }
                         var dSegLen = Math.min(dlen-cBuffer.currentLength,cBuffer.mtu); //Size of current received fragment
+                        
+                        if(data.length<4+1+2+2+4+2+dSegLen) {
+                            return;
+                        }
                         cBuffer.currentLength+=dSegLen;
                         cBuffer[packetID] = true;
+                        
                         data.copy(cBuffer.buffer,cBuffer.mtu*packetID,4+1+2+2+4+2,4+1+2+2+4+2+dSegLen);
                         if(cBuffer.currentLength >= dlen) {
                             //We have a packet!
@@ -334,7 +339,7 @@ var Session = function () {
                             if(timespent>=maxTime) {
                                 clearTimeout(transmitTimer);
                                 
-                                callback(new Error('Retransmit threshold exceeded with retransmit timeout = '+retransmitTime+', MTU = '+linkMTU+', BPS = '+bps));
+                                callback(new Error('Retransmit threshold exceeded with retransmit timeout = '+retransmitTime+', MTU = '+linkMTU+', BPS = '+bps+', retries='+retries));
                             }
                             retries++;
                             retval.setPacketId(pid);
